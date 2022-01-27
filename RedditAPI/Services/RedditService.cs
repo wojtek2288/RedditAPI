@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using RedditAPI.Entities;
 using RedditAPI.Exceptions;
+using RedditAPI.Models;
 using RestSharp;
 using System;
 using System.Collections.Generic;
@@ -12,7 +13,7 @@ namespace RedditAPI.Services
 {
     public interface IRedditService
     {
-        void GetHistory();
+        IEnumerable<History> GetHistory();
         Task<string> GetImage(int limit, string sort);
     }
 
@@ -25,6 +26,13 @@ namespace RedditAPI.Services
             _configuration = configuration;
             _context = context;
         }
+
+        /// <summary>
+        /// Gets an url of random image from subreddit specified in configuration
+        /// </summary>
+        /// <param name="limit">Number of posts per request (Max = 100)</param>
+        /// <param name="sort">Post sorting method. Possible values = {relevance, hot, top, new, comments}</param>
+        /// <returns>Url of random image</returns>
         public async Task<string> GetImage(int limit, string sort)
         {
             string Subreddit = _configuration["Subreddit"];
@@ -40,13 +48,16 @@ namespace RedditAPI.Services
             Request.AddParameter("t", "all");
             Request.AddParameter("raw_json", 1);
 
-            while(true)
+            //Make requests until finding post with an image or exceed the limit of listing (around 1000 posts)
+            while (true)
             {
                 var response = await Client.ExecuteAsync(Request);
 
                 if (!response.IsSuccessful) throw new InternalServerErrorException("Couldn't fetch reddit API");
 
                 dynamic body = JsonConvert.DeserializeObject(response.Content);
+
+                //Get after element for next pagination result
                 string after = body.data.after;
 
                 if (after is null)
@@ -56,10 +67,12 @@ namespace RedditAPI.Services
 
                 Request.AddParameter("after", after);
 
+                //Foreach post per request
                 for (int i = 0; i < limit; i++)
                 {
                     int selectedIdx = SelectIdx(Numbers);
-                    Console.WriteLine(selectedIdx.ToString());
+
+                    //Break when first image was found
                     if (body.data.children[selectedIdx].data.preview is not null)
                     {
                         Image = body.data.children[selectedIdx].data.preview.images[0].source.url;
@@ -73,12 +86,24 @@ namespace RedditAPI.Services
                 InitList(Numbers, limit);
             }
 
+            History hist = new History()
+            {
+                Url = Image,
+                DrawDate = DateTime.Now
+            };
+
+            _context.DrawHistory.Add(hist);
+            if(_context.SaveChanges() != 1) throw new InternalServerErrorException("Couldn't save to Database");
+            
             return Image;
         }
 
-        public void GetHistory()
+        public IEnumerable<History> GetHistory()
         {
-
+            foreach(var historyItem in _context.DrawHistory)
+            {
+                yield return historyItem;
+            }
         }
 
         private void InitList(List<int> Numbers, int limit)
@@ -89,6 +114,11 @@ namespace RedditAPI.Services
             }
         }
 
+        /// <summary>
+        /// Draw an index and remove element at this index from List
+        /// </summary>
+        /// <param name="Numbers">List of possible numbers</param>
+        /// <returns>Index of the post drawn</returns>
         private int SelectIdx(List<int> Numbers)
         {
             Random rnd = new Random();

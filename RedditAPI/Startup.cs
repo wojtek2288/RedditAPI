@@ -33,6 +33,7 @@ namespace RedditAPI
             services.AddDbContext<RedditDbContext>(options => options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
             services.AddScoped<IRedditService, RedditService>();
             services.AddScoped<ErrorHandlingMiddleware>();
+            services.AddAutoMapper(this.GetType().Assembly);
             services.AddControllers();
             services.AddSwaggerGen(c =>
             {
