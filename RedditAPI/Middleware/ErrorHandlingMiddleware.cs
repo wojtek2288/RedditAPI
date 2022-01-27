@@ -1,9 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using RedditAPI.Exceptions;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace RedditAPI.Middleware
@@ -24,6 +21,11 @@ namespace RedditAPI.Middleware
             catch(NotFoundException e)
             {
                 context.Response.StatusCode = 404;
+                await context.Response.WriteAsync(e.Message);
+            }
+            catch(BadRequestException e)
+            {
+                context.Response.StatusCode = 400;
                 await context.Response.WriteAsync(e.Message);
             }
             catch(Exception)

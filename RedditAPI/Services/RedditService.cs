@@ -2,11 +2,9 @@
 using Newtonsoft.Json;
 using RedditAPI.Entities;
 using RedditAPI.Exceptions;
-using RedditAPI.Models;
 using RestSharp;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace RedditAPI.Services
@@ -21,10 +19,12 @@ namespace RedditAPI.Services
     {
         private readonly IConfiguration _configuration;
         private readonly RedditDbContext _context;
+        private readonly HashSet<string> sortingOptions;
         public RedditService(IConfiguration configuration, RedditDbContext context)
         {
             _configuration = configuration;
             _context = context;
+            sortingOptions = new HashSet<string>() { "relevance", "hot", "top", "new" };
         }
 
         /// <summary>
@@ -35,12 +35,15 @@ namespace RedditAPI.Services
         /// <returns>Url of random image</returns>
         public async Task<string> GetImage(int limit, string sort)
         {
-            string Subreddit = _configuration["Subreddit"];
-            List<int> Numbers = new List<int>();
-            InitList(Numbers, limit);
+            if (limit < 1 || limit > 100 || !sortingOptions.Contains(sort)) 
+                throw new BadRequestException("Limit must be between 1 and 100 and sort must be one of: relevance, hot, top, new");
+
+            string subreddit = _configuration["Subreddit"];
+            List<int> numbers = new List<int>();
+            InitList(numbers, limit);
             string Image = null;
 
-            RestClient Client = new RestClient("http://www.reddit.com/r/" + Subreddit + ".json");
+            RestClient Client = new RestClient("http://www.reddit.com/r/" + subreddit + ".json");
             RestRequest Request = new RestRequest();
 
             Request.AddParameter("limit", limit.ToString());
@@ -70,7 +73,7 @@ namespace RedditAPI.Services
                 //Foreach post per request
                 for (int i = 0; i < limit; i++)
                 {
-                    int selectedIdx = SelectIdx(Numbers);
+                    int selectedIdx = SelectIdx(numbers);
 
                     //Break when first image was found
                     if (body.data.children[selectedIdx].data.preview is not null)
@@ -83,7 +86,7 @@ namespace RedditAPI.Services
                 if (Image is not null)
                     break;
 
-                InitList(Numbers, limit);
+                InitList(numbers, limit);
             }
 
             History hist = new History()
