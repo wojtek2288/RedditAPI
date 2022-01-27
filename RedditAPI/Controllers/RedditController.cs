@@ -24,7 +24,7 @@ namespace RedditAPI.Controllers
         [HttpGet("random")]
         public async Task<IActionResult> GetImage()
         {
-            string image = await _redditService.GetImage(10, "top");
+            string image = await _redditService.GetImage(50, "top");
 
             return Ok(image);
         }

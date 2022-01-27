@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
+using RedditAPI.Entities;
 using RedditAPI.Exceptions;
 using RestSharp;
 using System;
@@ -18,39 +19,59 @@ namespace RedditAPI.Services
     public class RedditService : IRedditService
     {
         private readonly IConfiguration _configuration;
-        public RedditService(IConfiguration configuration)
+        private readonly RedditDbContext _context;
+        public RedditService(IConfiguration configuration, RedditDbContext context)
         {
             _configuration = configuration;
+            _context = context;
         }
         public async Task<string> GetImage(int limit, string sort)
         {
             string Subreddit = _configuration["Subreddit"];
             List<int> Numbers = new List<int>();
             InitList(Numbers, limit);
-            string Image = "";
+            string Image = null;
 
             RestClient Client = new RestClient("http://www.reddit.com/r/" + Subreddit + ".json");
             RestRequest Request = new RestRequest();
 
             Request.AddParameter("limit", limit.ToString());
             Request.AddParameter("sort", sort);
+            Request.AddParameter("t", "all");
             Request.AddParameter("raw_json", 1);
 
-            var response = await Client.ExecuteAsync(Request);
-
-            if (!response.IsSuccessful) throw new InternalServerErrorException("Couldn't fetch reddit API");
-
-            dynamic body = JsonConvert.DeserializeObject(response.Content);
-
-            for(int i = 1; i <= limit; i++)
+            while(true)
             {
-                int selectedIdx = SelectIdx(Numbers);
+                var response = await Client.ExecuteAsync(Request);
 
-                if (body.data.children[selectedIdx].data.preview is not null)
-                    Image = body.data.children[selectedIdx].data.preview.images[0].source.url;
+                if (!response.IsSuccessful) throw new InternalServerErrorException("Couldn't fetch reddit API");
+
+                dynamic body = JsonConvert.DeserializeObject(response.Content);
+                string after = body.data.after;
+
+                if (after is null)
+                {
+                    throw new NotFoundException("Pics not found on this subreddit");
+                }
+
+                Request.AddParameter("after", after);
+
+                for (int i = 0; i < limit; i++)
+                {
+                    int selectedIdx = SelectIdx(Numbers);
+                    Console.WriteLine(selectedIdx.ToString());
+                    if (body.data.children[selectedIdx].data.preview is not null)
+                    {
+                        Image = body.data.children[selectedIdx].data.preview.images[0].source.url;
+                        break;
+                    }
+                }
+
+                if (Image is not null)
+                    break;
+
+                InitList(Numbers, limit);
             }
-
-            if (Image is null) throw new NotFoundException("No post with an image found within specified limit");
 
             return Image;
         }
@@ -62,7 +83,7 @@ namespace RedditAPI.Services
 
         private void InitList(List<int> Numbers, int limit)
         {
-            for(int i = 1; i <= limit; i++)
+            for(int i = 0; i < limit; i++)
             {
                 Numbers.Add(i);
             }
